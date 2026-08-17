@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>لوحة تحكم المطور - إدارة اشتراكات المنافذ</title>
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        :root {
+            --primary: #0066FF;
+            --success: #05CD99;
+            --danger: #EE5D50;
+            --warning: #FF9900;
+            --bg: #0B1437;
+            --card: #111C44;
+            --border: #2B3674;
+            --text: #FFFFFF;
+            --text-sec: #A3AED0;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Cairo', sans-serif; }
+        body { background-color: var(--bg); color: var(--text); padding: 20px; direction: rtl; }
+        .container { max-width: 900px; margin: 0 auto; }
+        
+        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px; padding-bottom: 15px; border-bottom: 1px solid var(--border); }
+        .header h1 { font-size: 1.5rem; color: var(--primary); }
+        
+        .card { background: var(--card); border: 1px solid var(--border); border-radius: 18px; padding: 22px; margin-bottom: 25px; box-shadow: 0 10px 30px rgba(0,0,0,0.3); }
+        .card h3 { margin-bottom: 15px; font-size: 1.1rem; display: flex; align-items: center; gap: 8px; color: var(--text); }
+        
+        .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-bottom: 15px; }
+        .form-group label { display: block; font-size: 0.8rem; color: var(--text-sec); margin-bottom: 5px; font-weight: 700; }
+        .form-group input { width: 100%; padding: 12px; border-radius: 10px; border: 1px solid var(--border); background: var(--bg); color: var(--text); font-weight: 700; outline: none; }
+        
+        .quick-durations { display: flex; gap: 8px; margin-bottom: 15px; flex-wrap: wrap; }
+        .dur-btn { padding: 7px 14px; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; color: var(--text-sec); cursor: pointer; font-size: 0.8rem; font-weight: 700; transition: 0.2s; }
+        .dur-btn:hover, .dur-btn.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+
+        .btn-create { width: 100%; padding: 14px; background: var(--primary); border: none; border-radius: 10px; color: #fff; font-weight: 800; cursor: pointer; font-size: 1rem; transition: 0.2s; }
+        .btn-create:hover { opacity: 0.9; }
+
+        /* جدول الحسابات */
+        .table-responsive { overflow-x: auto; }
+        table { width: 100%; border-collapse: collapse; text-align: right; }
+        th, td { padding: 12px 14px; border-bottom: 1px solid var(--border); font-size: 0.88rem; }
+        th { color: var(--text-sec); font-weight: 700; background: rgba(0,0,0,0.1); }
+        
+        .badge { padding: 4px 10px; border-radius: 20px; font-size: 0.75rem; font-weight: 800; }
+        .badge-active { background: rgba(5, 205, 153, 0.15); color: var(--success); }
+        .badge-expired { background: rgba(238, 93, 80, 0.15); color: var(--danger); }
+        
+        .action-btns { display: flex; gap: 6px; }
+        .sm-btn { padding: 6px 10px; border-radius: 6px; border: none; cursor: pointer; font-size: 0.75rem; font-weight: 700; }
+        .btn-reset-dev { background: rgba(255, 153, 0, 0.15); color: var(--warning); }
+        .btn-del { background: rgba(238, 93, 80, 0.15); color: var(--danger); }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <header class="header">
+            <h1><i class="fa-solid fa-user-shield"></i> لوحة تحكم المشتركين</h1>
+            <span style="font-size: 0.85rem; color: var(--text-sec);">المطور: diajb0@</span>
+        </header>
+
+        <div class="card">
+            <h3><i class="fa-solid fa-user-plus" style="color: var(--primary);"></i> إنشاء أو تمديد حساب منفذ</h3>
+            <form id="createAccountForm">
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label>اسم المستخدم (English / أرقام):</label>
+                        <input type="text" id="newUsername" required placeholder="مثال: manfath1">
+                    </div>
+                    <div class="form-group">
+                        <label>كلمة المرور:</label>
+                        <input type="text" id="newPassword" required placeholder="مثال: 12345678">
+                    </div>
+                    <div class="form-group">
+                        <label>تاريخ انتهاء الاشتراك:</label>
+                        <input type="date" id="expiryDateInput" required>
+                    </div>
+                </div>
+
+                <div class="quick-durations">
+                    <span style="font-size: 0.8rem; color: var(--text-sec); margin-left: 5px; align-self: center;">خيارات سريعة:</span>
+                    <button type="button" class="dur-btn" onclick="setQuickDate(7)">تجربة (7 أيام)</button>
+                    <button type="button" class="dur-btn" onclick="setQuickDate(30)">شهر (30 يوم)</button>
+                    <button type="button" class="dur-btn" onclick="setQuickDate(365)">سنة (365 يوم)</button>
+                    <button type="button" class="dur-btn" onclick="setQuickDate(29000)">مدى الحياة (مفتوح)</button>
+                </div>
+
+                <button type="submit" class="btn-create" id="submitAccBtn">
+                    حفظ وتفعيل الحساب <i class="fa-solid fa-check"></i>
+                </button>
+            </form>
+        </div>
+
+        <div class="card">
+            <h3><i class="fa-solid fa-users" style="color: var(--success);"></i> المشتركين الحاليين</h3>
+            <div class="table-responsive">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>اسم المستخدم</th>
+                            <th>تاريخ الانتهاء</th>
+                            <th>الحالة</th>
+                            <th>الأجهزة</th>
+                            <th>الإجراءات</th>
+                        </tr>
+                    </thead>
+                    <tbody id="subscriptionsTableBody">
+                        <tr><td colspan="5" style="text-align: center; color: var(--text-sec);">جاري جلب الحسابات...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+
+    <script>
+        const firebaseConfig = {
+            apiKey: "AIzaSyCtGr3r2MS8a7KdVuBh8gJVL0eNve7twSU",
+            authDomain: "zaincashdeliveryhelper.firebaseapp.com",
+            projectId: "zaincashdeliveryhelper",
+            storageBucket: "zaincashdeliveryhelper.firebasestorage.app",
+            messagingSenderId: "108290396776",
+            appId: "1:108290396776:web:ae3a55b268aaaf84c1e1dd"
+        };
+
+        if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+        const db = firebase.firestore();
+
+        // تحديد التواريخ السريعة
+        function setQuickDate(days) {
+            const d = new Date();
+            d.setDate(d.getDate() + days);
+            document.getElementById('expiryDateInput').value = d.toISOString().split('T')[0];
+        }
+
+        // افتراضي: تعيين تجربة 7 أيام
+        setQuickDate(7);
+
+        // جلب المشتركين لحظياً
+        function loadSubscriptions() {
+            db.collection("subscriptions").onSnapshot(snapshot => {
+                const tbody = document.getElementById('subscriptionsTableBody');
+                tbody.innerHTML = '';
+
+                if (snapshot.empty) {
+                    tbody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--text-sec);">لا يوجد حسابات منشأة بعد.</td></tr>`;
+                    return;
+                }
+
+                snapshot.forEach(doc => {
+                    const data = doc.data();
+                    const username = doc.id;
+                    const today = new Date().toISOString().split('T')[0];
+                    const isExpired = today > data.expiryDate;
+                    const devicesCount = (data.devices || []).length;
+
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `
+                        <td><strong>${username}</strong></td>
+                        <td>${data.expiryDate}</td>
+                        <td>
+                            <span class="badge ${isExpired ? 'badge-expired' : 'badge-active'}">
+                                ${isExpired ? 'منتهي' : 'فعال'}
+                            </span>
+                        </td>
+                        <td><i class="fa-solid fa-mobile-screen"></i> ${devicesCount} / 4</td>
+                        <td>
+                            <div class="action-btns">
+                                <button class="sm-btn btn-reset-dev" title="تصفير الأجهزة للسماح بدخول أجهزة جديدة" onclick="resetDevices('${username}')">
+                                    <i class="fa-solid fa-rotate-left"></i> تصفير الأجهزة
+                                </button>
+                                <button class="sm-btn btn-del" onclick="deleteAccount('${username}')">
+                                    <i class="fa-solid fa-trash"></i>
+                                </button>
+                            </div>
+                        </td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+            });
+        }
+
+        loadSubscriptions();
+
+        // تصفير الأجهزة
+        async function resetDevices(username) {
+            if (confirm(`هل تريد تصفير الأجهزة للحساب (${username})؟ سيمكنه الدخول من أجهزة جديدة.`)) {
+                await db.collection("subscriptions").doc(username).update({ devices: [] });
+                alert("تم تصفير الأجهزة بنجاح!");
+            }
+        }
+
+        // حذف الحساب
+        async function deleteAccount(username) {
+            if (confirm(`هل أنت متأكد من حذف الحساب (${username}) نهائياً؟`)) {
+                await db.collection("subscriptions").doc(username).delete();
+                alert("تم حذف الحساب من المنظومة!");
+            }
+        }
+
+        // إنشاء / حفظ الحساب
+        document.getElementById('createAccountForm').onsubmit = async (e) => {
+            e.preventDefault();
+            const username = document.getElementById('newUsername').value.trim().toLowerCase();
+            const password = document.getElementById('newPassword').value.trim();
+            const expiryDate = document.getElementById('expiryDateInput').value;
+            const submitBtn = document.getElementById('submitAccBtn');
+
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = 'جاري الحفظ والإنشاء...';
+
+            try {
+                // حفظ بيانات الاشتراك في Firestore
+                await db.collection("subscriptions").doc(username).set({
+                    password: password,
+                    expiryDate: expiryDate,
+                    devices: [],
+                    createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                }, { merge: true });
+
+                alert(`✅ تم إنشاء/تحديث الحساب بنجاح!\n\nاسم المستخدم: ${username}\nكلمة المرور: ${password}\nينتهي في: ${expiryDate}`);
+                document.getElementById('createAccountForm').reset();
+                setQuickDate(7);
+            } catch (err) {
+                alert("خطأ أثناء الحفظ: " + err.message);
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = 'حفظ وتفعيل الحساب <i class="fa-solid fa-check"></i>';
+            }
+        };
+    </script>
+</body>
+</html>
