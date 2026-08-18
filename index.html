@@ -47,14 +47,23 @@
         th, td { padding: 12px 14px; border-bottom: 1px solid var(--border); font-size: 0.88rem; }
         th { color: var(--text-sec); font-weight: 700; background: rgba(0,0,0,0.1); }
         
+        tr.user-row { cursor: pointer; transition: 0.2s; }
+        tr.user-row:hover { background: rgba(0, 102, 255, 0.08); }
+
         .badge { padding: 4px 10px; border-radius: 20px; font-size: 0.75rem; font-weight: 800; }
         .badge-active { background: rgba(5, 205, 153, 0.15); color: var(--success); }
-        .badge-expired { background: rgba(238, 93, 80, 0.15); color: var(--danger); }
+        .badge-expired { background: rgba(238, 93, 80, 0.2); color: var(--danger); font-weight: 900; }
         
         .action-btns { display: flex; gap: 6px; }
         .sm-btn { padding: 6px 10px; border-radius: 6px; border: none; cursor: pointer; font-size: 0.75rem; font-weight: 700; }
         .btn-reset-dev { background: rgba(255, 153, 0, 0.15); color: var(--warning); }
         .btn-del { background: rgba(238, 93, 80, 0.15); color: var(--danger); }
+
+        /* نافذة تفاصيل وتمديد الحساب المنبثقة */
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 1000; justify-content: center; align-items: center; padding: 15px; }
+        .modal-content { background: var(--card); border: 1px solid var(--border); border-radius: 20px; width: 100%; max-width: 500px; padding: 25px; box-shadow: 0 15px 40px rgba(0,0,0,0.5); }
+        .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding-bottom: 10px; border-bottom: 1px solid var(--border); }
+        .close-btn { font-size: 1.5rem; cursor: pointer; color: var(--text-sec); }
     </style>
 </head>
 <body>
@@ -78,17 +87,20 @@
                         <input type="text" id="newPassword" required placeholder="مثال: 12345678">
                     </div>
                     <div class="form-group">
-                        <label>تاريخ انتهاء الاشتراك:</label>
-                        <input type="date" id="expiryDateInput" required>
+                        <label>تاريخ ووقت الانتهاء:</label>
+                        <input type="datetime-local" id="expiryDateInput" required>
                     </div>
                 </div>
 
                 <div class="quick-durations">
                     <span style="font-size: 0.8rem; color: var(--text-sec); margin-left: 5px; align-self: center;">خيارات سريعة:</span>
-                    <button type="button" class="dur-btn" onclick="setQuickDate(7)">تجربة (7 أيام)</button>
-                    <button type="button" class="dur-btn" onclick="setQuickDate(30)">شهر (30 يوم)</button>
-                    <button type="button" class="dur-btn" onclick="setQuickDate(365)">سنة (365 يوم)</button>
-                    <button type="button" class="dur-btn" onclick="setQuickDate(29000)">مدى الحياة (مفتوح)</button>
+                    <button type="button" class="dur-btn" onclick="setQuickTime(5, 'minutes')">5 دقائق (تجربة)</button>
+                    <button type="button" class="dur-btn" onclick="setQuickTime(1, 'hours')">ساعة واحدة</button>
+                    <button type="button" class="dur-btn" onclick="setQuickTime(1, 'days')">يوم واحد</button>
+                    <button type="button" class="dur-btn" onclick="setQuickTime(7, 'days')">أسبوع (7 أيام)</button>
+                    <button type="button" class="dur-btn" onclick="setQuickTime(30, 'days')">شهر (30 يوم)</button>
+                    <button type="button" class="dur-btn" onclick="setQuickTime(365, 'days')">سنة</button>
+                    <button type="button" class="dur-btn" onclick="setQuickTime(29000, 'days')">مدى الحياة</button>
                 </div>
 
                 <button type="submit" class="btn-create" id="submitAccBtn">
@@ -98,12 +110,13 @@
         </div>
 
         <div class="card">
-            <h3><i class="fa-solid fa-users" style="color: var(--success);"></i> المشتركين الحاليين</h3>
+            <h3><i class="fa-solid fa-users" style="color: var(--success);"></i> المشتركين (اضغط على أي صف لتفاصيل وتمديد الحساب)</h3>
             <div class="table-responsive">
                 <table>
                     <thead>
                         <tr>
                             <th>اسم المستخدم</th>
+                            <th>كلمة المرور</th>
                             <th>تاريخ الانتهاء</th>
                             <th>الحالة</th>
                             <th>الأجهزة</th>
@@ -111,10 +124,47 @@
                         </tr>
                     </thead>
                     <tbody id="subscriptionsTableBody">
-                        <tr><td colspan="5" style="text-align: center; color: var(--text-sec);">جاري جلب الحسابات...</td></tr>
+                        <tr><td colspan="6" style="text-align: center; color: var(--text-sec);">جاري جلب الحسابات...</td></tr>
                     </tbody>
                 </table>
             </div>
+        </div>
+    </div>
+
+    <div id="detailsModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="modalUsernameTitle"><i class="fa-solid fa-user-gear"></i> تفاصيل الحساب</h3>
+                <span class="close-btn" onclick="document.getElementById('detailsModal').style.display='none'">&times;</span>
+            </div>
+            <div style="margin-bottom: 15px;">
+                <div class="form-group">
+                    <label>اسم المستخدم:</label>
+                    <input type="text" id="modalUsernameDisplay" readonly style="background: rgba(0,0,0,0.2); cursor: not-allowed; color: var(--primary);">
+                </div>
+
+                <div class="form-group">
+                    <label>كلمة المرور (يمكنك تعديلها أيضاً):</label>
+                    <input type="text" id="modalPasswordInput" placeholder="كلمة المرور">
+                </div>
+
+                <div class="form-group">
+                    <label>تعديل / تمديد تاريخ ووقت الانتهاء:</label>
+                    <input type="datetime-local" id="extendExpiryInput">
+                </div>
+                
+                <div class="quick-durations">
+                    <button type="button" class="dur-btn" onclick="setExtendTime(5, 'minutes')">+5 دقائق</button>
+                    <button type="button" class="dur-btn" onclick="setExtendTime(1, 'hours')">+ساعة</button>
+                    <button type="button" class="dur-btn" onclick="setExtendTime(7, 'days')">+أسبوع</button>
+                    <button type="button" class="dur-btn" onclick="setExtendTime(30, 'days')">+شهر</button>
+                    <button type="button" class="dur-btn" onclick="setExtendTime(365, 'days')">+سنة</button>
+                </div>
+            </div>
+            <button id="saveExtensionBtn" class="btn-create" style="margin-bottom: 10px;">حفظ التعديلات والتمديد</button>
+            <button id="modalResetDevBtn" class="btn-create btn-reset-dev" style="background: rgba(255, 153, 0, 0.15); border: 1px solid var(--warning);">
+                <i class="fa-solid fa-rotate-left"></i> تصفير الأجهزة وطرد المتصلين فوراً
+            </button>
         </div>
     </div>
 
@@ -135,55 +185,80 @@
         if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
         const db = firebase.firestore();
 
-        // تحديد التواريخ السريعة
-        function setQuickDate(days) {
-            const d = new Date();
-            d.setDate(d.getDate() + days);
-            document.getElementById('expiryDateInput').value = d.toISOString().split('T')[0];
+        // تحويل التاريخ إلى صيغة datetime-local
+        function formatDateTimeLocal(date) {
+            const pad = (n) => n < 10 ? '0' + n : n;
+            return date.getFullYear() + '-' +
+                pad(date.getMonth() + 1) + '-' +
+                pad(date.getDate()) + 'T' +
+                pad(date.getHours()) + ':' +
+                pad(date.getMinutes());
         }
 
-        // افتراضي: تعيين تجربة 7 أيام
-        setQuickDate(7);
+        function setQuickTime(amount, unit) {
+            const d = new Date();
+            if (unit === 'minutes') d.setMinutes(d.getMinutes() + amount);
+            if (unit === 'hours') d.setHours(d.getHours() + amount);
+            if (unit === 'days') d.setDate(d.getDate() + amount);
+            document.getElementById('expiryDateInput').value = formatDateTimeLocal(d);
+        }
 
-        // جلب المشتركين لحظياً
+        setQuickTime(7, 'days');
+
+        let selectedUserDoc = null;
+
+        function setExtendTime(amount, unit) {
+            const d = new Date();
+            if (unit === 'minutes') d.setMinutes(d.getMinutes() + amount);
+            if (unit === 'hours') d.setHours(d.getHours() + amount);
+            if (unit === 'days') d.setDate(d.getDate() + amount);
+            document.getElementById('extendExpiryInput').value = formatDateTimeLocal(d);
+        }
+
+        // جلب المشتركين
         function loadSubscriptions() {
-            db.collection("subscriptions").onSnapshot(snapshot => {
+            db.collection("subscriptions").orderBy("createdAt", "desc").onSnapshot(snapshot => {
                 const tbody = document.getElementById('subscriptionsTableBody');
                 tbody.innerHTML = '';
 
                 if (snapshot.empty) {
-                    tbody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--text-sec);">لا يوجد حسابات منشأة بعد.</td></tr>`;
+                    tbody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: var(--text-sec);">لا توجد حسابات مسجلة.</td></tr>`;
                     return;
                 }
 
                 snapshot.forEach(doc => {
                     const data = doc.data();
                     const username = doc.id;
-                    const today = new Date().toISOString().split('T')[0];
-                    const isExpired = today > data.expiryDate;
+                    const now = new Date().getTime();
+                    const expiryTime = new Date(data.expiryDate).getTime();
+                    const isExpired = now > expiryTime;
                     const devicesCount = (data.devices || []).length;
 
                     const tr = document.createElement('tr');
+                    tr.className = 'user-row';
                     tr.innerHTML = `
                         <td><strong>${username}</strong></td>
-                        <td>${data.expiryDate}</td>
+                        <td style="color: var(--text-sec); font-family: monospace;">${data.password || '---'}</td>
+                        <td>${new Date(data.expiryDate).toLocaleString('ar-EG')}</td>
                         <td>
                             <span class="badge ${isExpired ? 'badge-expired' : 'badge-active'}">
-                                ${isExpired ? 'منتهي' : 'فعال'}
+                                ${isExpired ? 'غير فعال (منتهي)' : 'فعال'}
                             </span>
                         </td>
                         <td><i class="fa-solid fa-mobile-screen"></i> ${devicesCount} / 4</td>
                         <td>
-                            <div class="action-btns">
-                                <button class="sm-btn btn-reset-dev" title="تصفير الأجهزة للسماح بدخول أجهزة جديدة" onclick="resetDevices('${username}')">
-                                    <i class="fa-solid fa-rotate-left"></i> تصفير الأجهزة
+                            <div class="action-btns" onclick="event.stopPropagation()">
+                                <button class="sm-btn btn-reset-dev" title="تصفير وطرد الأجهزة فوراً" onclick="resetDevices('${username}')">
+                                    <i class="fa-solid fa-rotate-left"></i> تصفير وطرد
                                 </button>
-                                <button class="sm-btn btn-del" onclick="deleteAccount('${username}')">
+                                <button class="sm-btn btn-del" title="حذف" onclick="deleteAccount('${username}')">
                                     <i class="fa-solid fa-trash"></i>
                                 </button>
                             </div>
                         </td>
                     `;
+
+                    tr.onclick = () => openUserDetails(username, data);
                     tbody.appendChild(tr);
                 });
             });
@@ -191,45 +266,88 @@
 
         loadSubscriptions();
 
-        // تصفير الأجهزة
+        // فتح نافذة تفاصيل وتمديد الحساب مع إظهار اليوزر والباسورد
+        function openUserDetails(username, data) {
+            selectedUserDoc = username;
+            document.getElementById('modalUsernameTitle').innerHTML = `<i class="fa-solid fa-user-gear"></i> إدارة الحساب: ${username}`;
+            document.getElementById('modalUsernameDisplay').value = username;
+            document.getElementById('modalPasswordInput').value = data.password || '';
+            
+            const expDate = new Date(data.expiryDate);
+            document.getElementById('extendExpiryInput').value = formatDateTimeLocal(expDate);
+            
+            document.getElementById('modalResetDevBtn').onclick = () => resetDevices(username);
+            document.getElementById('detailsModal').style.display = 'flex';
+        }
+
+        // حفظ التمديد وتعديل الباسورد من النافذة
+        document.getElementById('saveExtensionBtn').onclick = async () => {
+            if (!selectedUserDoc) return;
+            const newExp = document.getElementById('extendExpiryInput').value;
+            const newPass = document.getElementById('modalPasswordInput').value.trim();
+
+            if (!newPass) {
+                alert("لا يمكن ترك كلمة المرور فارغة!");
+                return;
+            }
+
+            try {
+                await db.collection("subscriptions").doc(selectedUserDoc).update({
+                    password: newPass,
+                    expiryDate: new Date(newExp).toISOString()
+                });
+                alert("تم تحديث بيانات الحساب والتمديد بنجاح!");
+                document.getElementById('detailsModal').style.display = 'none';
+            } catch (e) {
+                alert("خطأ: " + e.message);
+            }
+        };
+
+        // تصفير الأجهزة وطرد المتصلين فوراً
         async function resetDevices(username) {
-            if (confirm(`هل تريد تصفير الأجهزة للحساب (${username})؟ سيمكنه الدخول من أجهزة جديدة.`)) {
-                await db.collection("subscriptions").doc(username).update({ devices: [] });
-                alert("تم تصفير الأجهزة بنجاح!");
+            if (confirm(`هل تريد تصفير الأجهزة وطرد كل المتصلين حالياً من الحساب (${username})؟`)) {
+                const newSessionKey = 'sess_' + Math.random().toString(36).substr(2, 9) + Date.now();
+                await db.collection("subscriptions").doc(username).update({
+                    devices: [],
+                    sessionKey: newSessionKey
+                });
+                alert("تم تصفير الأجهزة وطرد جميع الجلسات المتصلة بنجاح!");
             }
         }
 
         // حذف الحساب
         async function deleteAccount(username) {
-            if (confirm(`هل أنت متأكد من حذف الحساب (${username}) نهائياً؟`)) {
+            if (confirm(`هل أنت متأكد من رغبتك في حذف الحساب (${username}) نهائياً؟`)) {
                 await db.collection("subscriptions").doc(username).delete();
-                alert("تم حذف الحساب من المنظومة!");
             }
         }
 
-        // إنشاء / حفظ الحساب
+        // إنشاء / تفعيل حساب جديد
         document.getElementById('createAccountForm').onsubmit = async (e) => {
             e.preventDefault();
             const username = document.getElementById('newUsername').value.trim().toLowerCase();
             const password = document.getElementById('newPassword').value.trim();
-            const expiryDate = document.getElementById('expiryDateInput').value;
+            const expiryDateLocal = document.getElementById('expiryDateInput').value;
             const submitBtn = document.getElementById('submitAccBtn');
 
             submitBtn.disabled = true;
             submitBtn.innerHTML = 'جاري الحفظ والإنشاء...';
 
             try {
-                // حفظ بيانات الاشتراك في Firestore
+                const expiryISO = new Date(expiryDateLocal).toISOString();
+                const sessionKey = 'sess_' + Math.random().toString(36).substr(2, 9) + Date.now();
+
                 await db.collection("subscriptions").doc(username).set({
                     password: password,
-                    expiryDate: expiryDate,
+                    expiryDate: expiryISO,
                     devices: [],
+                    sessionKey: sessionKey,
                     createdAt: firebase.firestore.FieldValue.serverTimestamp()
                 }, { merge: true });
 
-                alert(`✅ تم إنشاء/تحديث الحساب بنجاح!\n\nاسم المستخدم: ${username}\nكلمة المرور: ${password}\nينتهي في: ${expiryDate}`);
+                alert(`✅ تم حفظ وتفعيل الحساب بنجاح!\n\nاسم المستخدم: ${username}\nكلمة المرور: ${password}\nينتهي في: ${new Date(expiryISO).toLocaleString('ar-EG')}`);
                 document.getElementById('createAccountForm').reset();
-                setQuickDate(7);
+                setQuickTime(7, 'days');
             } catch (err) {
                 alert("خطأ أثناء الحفظ: " + err.message);
             } finally {
@@ -237,6 +355,7 @@
                 submitBtn.innerHTML = 'حفظ وتفعيل الحساب <i class="fa-solid fa-check"></i>';
             }
         };
+
     </script>
 </body>
 </html>
