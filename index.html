@@ -162,6 +162,11 @@
                 </div>
             </div>
             <button id="saveExtensionBtn" class="btn-create" style="margin-bottom: 10px;">حفظ التعديلات والتمديد</button>
+            
+            <button id="copyMessageBtn" type="button" class="btn-create" style="background: var(--success); margin-bottom: 10px;">
+                <i class="fa-solid fa-copy"></i> نسخ كليشة الإرسال للزبون
+            </button>
+
             <button id="modalResetDevBtn" class="btn-create btn-reset-dev" style="background: rgba(255, 153, 0, 0.15); border: 1px solid var(--warning);">
                 <i class="fa-solid fa-rotate-left"></i> تصفير الأجهزة وطرد المتصلين فوراً
             </button>
@@ -266,7 +271,7 @@
 
         loadSubscriptions();
 
-        // فتح نافذة تفاصيل وتمديد الحساب مع إظهار اليوزر والباسورد
+        // فتح نافذة تفاصيل وتمديد الحساب وتجهيز زر الكليشة
         function openUserDetails(username, data) {
             selectedUserDoc = username;
             document.getElementById('modalUsernameTitle').innerHTML = `<i class="fa-solid fa-user-gear"></i> إدارة الحساب: ${username}`;
@@ -277,6 +282,69 @@
             document.getElementById('extendExpiryInput').value = formatDateTimeLocal(expDate);
             
             document.getElementById('modalResetDevBtn').onclick = () => resetDevices(username);
+
+            // برمجة زر نسخ الكليشة التلقائية الذكية
+            document.getElementById('copyMessageBtn').onclick = () => {
+                const currentPass = document.getElementById('modalPasswordInput').value.trim() || data.password;
+                const targetExp = new Date(document.getElementById('extendExpiryInput').value || data.expiryDate);
+                const now = new Date();
+                const diffDays = Math.round((targetExp - now) / (1000 * 60 * 60 * 24));
+                const formattedDate = targetExp.toLocaleString('ar-EG', { dateStyle: 'medium', timeStyle: 'short' });
+
+                // تحديد نوع الباقة تلقائياً
+                let pkgName = "التجريبية المجانية (7 أيام)";
+                let headIntro = "أهلاً بك! تم تفعيل حسابك التجريبي بنجاح في منظومة مساعد إيداع السواق 🚀";
+                
+                if (diffDays > 3000) {
+                    pkgName = "اشتراك مدى الحياة (مفتوح للأبد)";
+                    headIntro = "ألف مبروك! تم تفعيل اشتراكك الدائم (مدى الحياة) في منظومة مساعد إيداع السواق 👑";
+                } else if (diffDays > 300) {
+                    pkgName = "الاشتراك السنوي (خصم 60%)";
+                    headIntro = "أهلاً بك! تم تفعيل اشتراكك السنوي بنجاح في منظومة مساعد إيداع السواق 🌟";
+                } else if (diffDays > 20) {
+                    pkgName = "الاشتراك الشهري";
+                    headIntro = "أهلاً بك! تم تفعيل اشتراكك الشهري بنجاح في منظومة مساعد إيداع السواق ⚡";
+                }
+
+                // نص الكليشة الجذاب
+                const clientMessage = 
+`${headIntro}
+
+✨ نوع الباقة: ${pkgName}
+⏳ تاريخ نهاية الصلاحية: ${formattedDate}
+
+🔐 بيانات تسجيل الدخول الخاصة بمنفذك:
+👤 اسم المستخدم: ${username}
+🔑 كلمة المرور: ${currentPass}
+
+💡 ميزات المنظومة المتوفرة لك:
+✅ قاعدة بيانات ضخمة ومحدثة لسواق طلبات وبلي فود.
+✅ نسخ فوري بكبسة زر واحدة لمنع الزخم.
+✅ حماية كاملة من أخطاء التحويل وفحص ذكي للـ ID ورقم الهاتف.
+✅ إمكانية فتح الحساب على 4 أجهزة لمنفذك.
+
+💰 باقات وعروض الاشتراك:
+🎁 الباقة التجريبية: 7 أيام مجاناً
+🔹 الاشتراك الشهري: 10,000 دينار فقط
+🔥 الاشتراك السنوي: 48,000 دينار (خصم 60% - الشهر بـ 4 آلاف فقط)
+👑 اشتراك مدى الحياة: 100,000 دينار (شراء لمرة واحدة)
+
+📞 للدعم الفني والتجديد:
+💬 تليجرام: @diajb0
+📱 هاتف: 07862247686`;
+
+                navigator.clipboard.writeText(clientMessage).then(() => {
+                    const btn = document.getElementById('copyMessageBtn');
+                    const origText = btn.innerHTML;
+                    btn.innerHTML = '<i class="fa-solid fa-check"></i> تم نسخ الكليشة بنجاح!';
+                    btn.style.background = '#0052CC';
+                    setTimeout(() => {
+                        btn.innerHTML = origText;
+                        btn.style.background = 'var(--success)';
+                    }, 2000);
+                });
+            };
+
             document.getElementById('detailsModal').style.display = 'flex';
         }
 
