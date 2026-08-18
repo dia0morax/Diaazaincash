@@ -129,6 +129,27 @@
                 </table>
             </div>
         </div>
+
+        <div class="card" style="border: 1px solid var(--danger);">
+            <h3><i class="fa-solid fa-trash-arrow-up" style="color: var(--danger);"></i> سلة المحذوفات (السائقين المحذوفين من قبل المنافذ)</h3>
+            <div class="table-responsive">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>اسم السائق</th>
+                            <th>الشركة / ID</th>
+                            <th>رقم الهاتف</th>
+                            <th>حُذف بواسطة</th>
+                            <th>تاريخ الحذف</th>
+                            <th>الإجراء</th>
+                        </tr>
+                    </thead>
+                    <tbody id="trashTableBody">
+                        <tr><td colspan="6" style="text-align: center; color: var(--text-sec);">جاري جلب المحذوفات...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
     </div>
 
     <div id="detailsModal" class="modal">
@@ -271,7 +292,60 @@
 
         loadSubscriptions();
 
-        // فتح نافذة تفاصيل وتمديد الحساب وتجهيز زر الكليشة
+        // جلب سلة المحذوفات الحية
+        function loadTrashDrivers() {
+            db.collection("drivers").where("isDeleted", "==", true).onSnapshot(snapshot => {
+                const tbody = document.getElementById('trashTableBody');
+                if (!tbody) return;
+                tbody.innerHTML = '';
+
+                if (snapshot.empty) {
+                    tbody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: var(--text-sec);">لا توجد أي سائقين محذوفين حالياً.</td></tr>`;
+                    return;
+                }
+
+                snapshot.forEach(doc => {
+                    const data = doc.data();
+                    const docId = doc.id;
+                    const deletedDate = data.deletedAt ? new Date(data.deletedAt).toLocaleString('ar-EG') : 'غير محدد';
+
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `
+                        <td><strong>${data.name || '---'}</strong></td>
+                        <td>${data.company === 'talabat' ? 'طلبات (' + (data.driverId || '') + ')' : 'بلي فود'}</td>
+                        <td>${data.phone || '---'}</td>
+                        <td><span style="color: var(--warning); font-weight: bold;">${data.deletedBy || 'مجهول'}</span></td>
+                        <td><small style="color: var(--text-sec);">${deletedDate}</small></td>
+                        <td>
+                            <button class="sm-btn" style="background: rgba(5, 205, 153, 0.2); color: var(--success);" onclick="restoreDriver('${docId}')">
+                                <i class="fa-solid fa-rotate-left"></i> استرجاع
+                            </button>
+                        </td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+            });
+        }
+
+        loadTrashDrivers();
+
+        // دالة استرجاع السائق المحذوف بضغطة زر
+        async function restoreDriver(docId) {
+            if (confirm("هل تريد استرجاع هذا السائق ليعود للظهور في المنظومة لجميع المنافذ؟")) {
+                try {
+                    await db.collection("drivers").doc(docId).update({
+                        isDeleted: false,
+                        deletedBy: null,
+                        deletedAt: null
+                    });
+                    alert("✅ تم استرجاع السائق بنجاح لجميع المنافذ!");
+                } catch (err) {
+                    alert("خطأ أثناء الاسترجاع: " + err.message);
+                }
+            }
+        }
+
+        // فتح نافذة تفاصيل وتمديد الحساب مع إظهار اليوزر والباسورد
         function openUserDetails(username, data) {
             selectedUserDoc = username;
             document.getElementById('modalUsernameTitle').innerHTML = `<i class="fa-solid fa-user-gear"></i> إدارة الحساب: ${username}`;
