@@ -74,6 +74,19 @@
             <span style="font-size: 0.85rem; color: var(--text-sec);">المطور: diajb0@</span>
         </header>
 
+        <div class="card" style="border: 1px solid var(--primary); background: rgba(0, 102, 255, 0.05);">
+            <h3><i class="fa-solid fa-database" style="color: var(--primary);"></i> النسخ الاحتياطي لقاعدة بيانات السائقين</h3>
+            <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                <button type="button" class="btn-create" style="flex: 1; min-width: 200px; background: var(--primary);" onclick="exportDriversBackup()">
+                    <i class="fa-solid fa-cloud-arrow-down"></i> تنزيل نسخة احتياطية (JSON)
+                </button>
+                <button type="button" class="btn-create" style="flex: 1; min-width: 200px; background: var(--warning); color: #000;" onclick="document.getElementById('restoreFileInput').click()">
+                    <i class="fa-solid fa-cloud-arrow-up"></i> استعادة قاعدة البيانات
+                </button>
+                <input type="file" id="restoreFileInput" accept=".json" style="display: none;" onchange="importDriversBackup(event)">
+            </div>
+        </div>
+
         <div class="card">
             <h3><i class="fa-solid fa-user-plus" style="color: var(--primary);"></i> إنشاء أو تمديد حساب منفذ</h3>
             <form id="createAccountForm">
@@ -188,8 +201,12 @@
                 <i class="fa-solid fa-copy"></i> نسخ كليشة الإرسال للزبون
             </button>
 
-            <button id="modalResetDevBtn" class="btn-create btn-reset-dev" style="background: rgba(255, 153, 0, 0.15); border: 1px solid var(--warning);">
+            <button id="modalResetDevBtn" class="btn-create btn-reset-dev" style="background: rgba(255, 153, 0, 0.15); border: 1px solid var(--warning); margin-bottom: 10px;">
                 <i class="fa-solid fa-rotate-left"></i> تصفير الأجهزة وطرد المتصلين فوراً
+            </button>
+
+            <button id="modalToggleBanBtn" type="button" class="btn-create btn-del" style="background: rgba(238, 93, 80, 0.2); border: 1px solid var(--danger);">
+                <i class="fa-solid fa-user-slash"></i> حظر الحساب وطرده فوراً
             </button>
         </div>
     </div>
@@ -241,7 +258,59 @@
             document.getElementById('extendExpiryInput').value = formatDateTimeLocal(d);
         }
 
-        // جلب المشتركين
+        // 1. تنزيل نسخة احتياطية من كافة السائقين
+        async function exportDriversBackup() {
+            try {
+                const snapshot = await db.collection("drivers").get();
+                const driversData = [];
+                snapshot.forEach(doc => {
+                    driversData.push({ id: doc.id, ...doc.data() });
+                });
+
+                const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(driversData, null, 2));
+                const downloadAnchor = document.createElement('a');
+                const dateStr = new Date().toISOString().split('T')[0];
+                downloadAnchor.setAttribute("href", dataStr);
+                downloadAnchor.setAttribute("download", `drivers_backup_${dateStr}.json`);
+                document.body.appendChild(downloadAnchor);
+                downloadAnchor.click();
+                downloadAnchor.remove();
+                alert(`✅ تم تصدير نسخة احتياطية تحتوي على (${driversData.length}) سائق بنجاح!`);
+            } catch (err) {
+                alert("خطأ أثناء تنزيل النسخة الاحتياطية: " + err.message);
+            }
+        }
+
+        // 2. استعادة نسخة احتياطية لقاعدة البيانات
+        function importDriversBackup(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = async function(e) {
+                try {
+                    const driversData = JSON.parse(e.target.result);
+                    if (!Array.isArray(driversData)) throw new Error("الملف غير صالح.");
+
+                    if (confirm(`هل أنت متأكد من استعادة (${driversData.length}) سائق لقاعدة البيانات؟`)) {
+                        let count = 0;
+                        for (const d of driversData) {
+                            const docId = d.id;
+                            delete d.id; // لا نحفظ الـ id داخل الحقول
+                            await db.collection("drivers").doc(docId).set(d, { merge: true });
+                            count++;
+                        }
+                        alert(`✅ تم استعادة (${count}) سائق بنجاح تام!`);
+                    }
+                } catch (err) {
+                    alert("فشل استعادة الملف: " + err.message);
+                }
+                event.target.value = ''; // إعادة تعيين الحقل
+            };
+            reader.readAsText(file);
+        }
+
+        // جلب المشتركين مع إظهار حالة الحظر
         function loadSubscriptions() {
             db.collection("subscriptions").orderBy("createdAt", "desc").onSnapshot(snapshot => {
                 const tbody = document.getElementById('subscriptionsTableBody');
@@ -258,7 +327,15 @@
                     const now = new Date().getTime();
                     const expiryTime = new Date(data.expiryDate).getTime();
                     const isExpired = now > expiryTime;
+                    const isBanned = data.isBanned === true;
                     const devicesCount = (data.devices || []).length;
+
+                    let statusBadge = `<span class="badge badge-active">فعال</span>`;
+                    if (isBanned) {
+                        statusBadge = `<span class="badge" style="background: rgba(238,93,80,0.25); color: var(--danger); font-weight: 900;">محظور 🚫</span>`;
+                    } else if (isExpired) {
+                        statusBadge = `<span class="badge badge-expired">منتهي</span>`;
+                    }
 
                     const tr = document.createElement('tr');
                     tr.className = 'user-row';
@@ -266,16 +343,15 @@
                         <td><strong>${username}</strong></td>
                         <td style="color: var(--text-sec); font-family: monospace;">${data.password || '---'}</td>
                         <td>${new Date(data.expiryDate).toLocaleString('ar-EG')}</td>
-                        <td>
-                            <span class="badge ${isExpired ? 'badge-expired' : 'badge-active'}">
-                                ${isExpired ? 'غير فعال (منتهي)' : 'فعال'}
-                            </span>
-                        </td>
+                        <td>${statusBadge}</td>
                         <td><i class="fa-solid fa-mobile-screen"></i> ${devicesCount} / 4</td>
                         <td>
                             <div class="action-btns" onclick="event.stopPropagation()">
                                 <button class="sm-btn btn-reset-dev" title="تصفير وطرد الأجهزة فوراً" onclick="resetDevices('${username}')">
-                                    <i class="fa-solid fa-rotate-left"></i> تصفير وطرد
+                                    <i class="fa-solid fa-rotate-left"></i>
+                                </button>
+                                <button class="sm-btn" style="background: ${isBanned ? 'rgba(5,205,153,0.15); color:var(--success)' : 'rgba(238,93,80,0.15); color:var(--danger)'};" title="${isBanned ? 'فك الحظر' : 'حظر الحساب'}" onclick="toggleBanUser('${username}', ${isBanned})">
+                                    <i class="fa-solid ${isBanned ? 'fa-unlock' : 'fa-ban'}"></i>
                                 </button>
                                 <button class="sm-btn btn-del" title="حذف" onclick="deleteAccount('${username}')">
                                     <i class="fa-solid fa-trash"></i>
@@ -291,6 +367,31 @@
         }
 
         loadSubscriptions();
+
+        // دالة حظر / فك حظر الحساب
+        async function toggleBanUser(username, isCurrentlyBanned) {
+            if (isCurrentlyBanned) {
+                if (confirm(`هل تريد فك الحظر عن الحساب (${username})؟`)) {
+                    await db.collection("subscriptions").doc(username).update({
+                        isBanned: false,
+                        banReason: ""
+                    });
+                    alert("✅ تم فك الحظر بنجاح!");
+                }
+            } else {
+                const reason = prompt(`أدخل سبب حظر الحساب (${username}) الذي سيظهر له:`, "مخالفة شروط الاستخدام ومحاولة التخريب");
+                if (reason !== null) {
+                    const newSessionKey = 'banned_' + Date.now();
+                    await db.collection("subscriptions").doc(username).update({
+                        isBanned: true,
+                        banReason: reason.trim() || "تم حظر الحساب من قبل الإدارة",
+                        sessionKey: newSessionKey,
+                        devices: []
+                    });
+                    alert("🚫 تم حظر الحساب وطرده من جميع الأجهزة فوراً!");
+                }
+            }
+        }
 
         // جلب سلة المحذوفات الحية
         function loadTrashDrivers() {
@@ -356,6 +457,20 @@
             document.getElementById('extendExpiryInput').value = formatDateTimeLocal(expDate);
             
             document.getElementById('modalResetDevBtn').onclick = () => resetDevices(username);
+
+            const banBtn = document.getElementById('modalToggleBanBtn');
+            if (banBtn) {
+                const isBanned = data.isBanned === true;
+                banBtn.innerHTML = isBanned 
+                    ? '<i class="fa-solid fa-unlock"></i> إلغاء حظر الحساب'
+                    : '<i class="fa-solid fa-user-slash"></i> حظر الحساب وطرده فوراً';
+                banBtn.style.background = isBanned ? 'rgba(5, 205, 153, 0.2)' : 'rgba(238, 93, 80, 0.2)';
+                banBtn.style.color = isBanned ? 'var(--success)' : 'var(--danger)';
+                banBtn.onclick = () => {
+                    toggleBanUser(username, isBanned);
+                    document.getElementById('detailsModal').style.display = 'none';
+                };
+            }
 
             // برمجة زر نسخ الكليشة التلقائية الذكية
             document.getElementById('copyMessageBtn').onclick = () => {
