@@ -163,6 +163,26 @@
                 </table>
             </div>
         </div>
+
+        <div class="card" style="border: 1px solid var(--warning);">
+            <h3><i class="fa-solid fa-clock-rotate-left" style="color: var(--warning);"></i> سجل التعديلات على السائقين (النسخ السابقة والتراجع)</h3>
+            <div class="table-responsive">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>السائق (بعد التعديل الحالي)</th>
+                            <th>البيانات قبل التعديل (القديمة)</th>
+                            <th>عُدّل بواسطة</th>
+                            <th>تاريخ التعديل</th>
+                            <th>الإجراء</th>
+                        </tr>
+                    </thead>
+                    <tbody id="editHistoryTableBody">
+                        <tr><td colspan="5" style="text-align: center; color: var(--text-sec);">جاري جلب سجل التعديلات...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
     </div>
 
     <div id="detailsModal" class="modal">
@@ -208,6 +228,27 @@
             <button id="modalToggleBanBtn" type="button" class="btn-create btn-del" style="background: rgba(238, 93, 80, 0.2); border: 1px solid var(--danger);">
                 <i class="fa-solid fa-user-slash"></i> حظر الحساب وطرده فوراً
             </button>
+        </div>
+    </div>
+
+    <div id="diffModal" class="modal">
+        <div class="modal-content" style="max-width: 600px;">
+            <div class="modal-header">
+                <h3><i class="fa-solid fa-code-compare" style="color: var(--primary);"></i> تفاصيل ومقارنة التعديل</h3>
+                <span class="close-btn" onclick="document.getElementById('diffModal').style.display='none'">&times;</span>
+            </div>
+
+            <div id="diffDetailsContainer" style="display: flex; flex-direction: column; gap: 15px; margin-bottom: 20px;">
+                </div>
+
+            <div style="display: flex; gap: 10px;">
+                <button id="modalRevertBtn" class="btn-create" style="background: var(--primary); flex: 1;">
+                    <i class="fa-solid fa-clock-rotate-left"></i> التراجع واسترجاع النسخة السابقة
+                </button>
+                <button type="button" class="btn-create btn-reset-dev" style="width: auto; padding: 14px 20px;" onclick="document.getElementById('diffModal').style.display='none'">
+                    إغلاق
+                </button>
+            </div>
         </div>
     </div>
 
@@ -258,7 +299,7 @@
             document.getElementById('extendExpiryInput').value = formatDateTimeLocal(d);
         }
 
-        // 1. تنزيل نسخة احتياطية من كافة السائقين
+        // 1. تنزيل نسخة احتياطية مع دعم كامل ودقيق للغة العربية (UTF-8 BOM)
         async function exportDriversBackup() {
             try {
                 const snapshot = await db.collection("drivers").get();
@@ -267,21 +308,32 @@
                     driversData.push({ id: doc.id, ...doc.data() });
                 });
 
-                const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(driversData, null, 2));
+                if (driversData.length === 0) {
+                    alert("لا يوجد سائقين في قاعدة البيانات لتصديرهم!");
+                    return;
+                }
+
+                // استخدام Blob بترميز UTF-8 سليم لحفظ الأسماء العربية بدون رموز غريبة
+                const jsonStr = JSON.stringify(driversData, null, 2);
+                const blob = new Blob(["\ufeff" + jsonStr], { type: 'application/json;charset=utf-8;' });
+                const url = URL.createObjectURL(blob);
+                
                 const downloadAnchor = document.createElement('a');
                 const dateStr = new Date().toISOString().split('T')[0];
-                downloadAnchor.setAttribute("href", dataStr);
-                downloadAnchor.setAttribute("download", `drivers_backup_${dateStr}.json`);
+                downloadAnchor.href = url;
+                downloadAnchor.download = `نسخة_سائقين_${dateStr}.json`;
                 document.body.appendChild(downloadAnchor);
                 downloadAnchor.click();
-                downloadAnchor.remove();
-                alert(`✅ تم تصدير نسخة احتياطية تحتوي على (${driversData.length}) سائق بنجاح!`);
+                document.body.removeChild(downloadAnchor);
+                URL.revokeObjectURL(url);
+
+                alert(`✅ تم حفظ النسخة الاحتياطية بنجاح! تحتوي على (${driversData.length}) سائق.`);
             } catch (err) {
                 alert("خطأ أثناء تنزيل النسخة الاحتياطية: " + err.message);
             }
         }
 
-        // 2. استعادة نسخة احتياطية لقاعدة البيانات
+        // 2. استعادة نسخة احتياطية مع قراءة صحيحة للغة العربية
         function importDriversBackup(event) {
             const file = event.target.files[0];
             if (!file) return;
@@ -289,26 +341,67 @@
             const reader = new FileReader();
             reader.onload = async function(e) {
                 try {
-                    const driversData = JSON.parse(e.target.result);
-                    if (!Array.isArray(driversData)) throw new Error("الملف غير صالح.");
+                    const text = e.target.result;
+                    const driversData = JSON.parse(text);
+                    if (!Array.isArray(driversData)) throw new Error("صيغة الملف غير متطابقة.");
 
                     if (confirm(`هل أنت متأكد من استعادة (${driversData.length}) سائق لقاعدة البيانات؟`)) {
                         let count = 0;
                         for (const d of driversData) {
-                            const docId = d.id;
-                            delete d.id; // لا نحفظ الـ id داخل الحقول
-                            await db.collection("drivers").doc(docId).set(d, { merge: true });
+                            const docId = d.id || ('imported_' + Math.random().toString(36).substr(2, 9));
+                            const driverPayload = { ...d };
+                            delete driverPayload.id;
+                            await db.collection("drivers").doc(docId).set(driverPayload, { merge: true });
                             count++;
                         }
-                        alert(`✅ تم استعادة (${count}) سائق بنجاح تام!`);
+                        alert(`✅ تم استعادة (${count}) سائق بنجاح تام وبدون أي أخطاء!`);
                     }
                 } catch (err) {
-                    alert("فشل استعادة الملف: " + err.message);
+                    alert("فشل استعادة الملف، تأكد أنه ملف JSON سليم: " + err.message);
                 }
-                event.target.value = ''; // إعادة تعيين الحقل
+                event.target.value = '';
             };
-            reader.readAsText(file);
+            reader.readAsText(file, "UTF-8");
         }
+
+        // 3. تشغيل وعرض سجل التعديلات المباشر
+        function loadEditHistory() {
+            db.collection("drivers").onSnapshot(snapshot => {
+                const tbody = document.getElementById('editHistoryTableBody');
+                if (!tbody) return;
+                tbody.innerHTML = '';
+
+                let hasHistory = false;
+
+                snapshot.forEach(doc => {
+                    const data = doc.data();
+                    const historyList = data.editHistory || [];
+
+                    historyList.forEach(hist => {
+                        hasHistory = true;
+                        const modDate = hist.modifiedAt ? new Date(hist.modifiedAt).toLocaleString('ar-EG') : 'غير محدد';
+
+                        const tr = document.createElement('tr');
+                        tr.innerHTML = `
+                            <td><strong>${data.name || '---'}</strong></td>
+                            <td style="font-size:0.82rem; color:var(--text-sec);">
+                                <b>الاسم القديم:</b> ${hist.name || '---'}<br>
+                                <b>الهاتف:</b> ${hist.phone || '---'} ${hist.driverId ? '| <b>ID:</b> ' + hist.driverId : ''}
+                            </td>
+                            <td><span style="color: var(--primary); font-weight: bold;">${hist.modifiedBy || 'مجهول'}</span></td>
+                            <td><small style="color: var(--text-sec);">${modDate}</small></td>
+                        `;
+                        tbody.appendChild(tr);
+                    });
+                });
+
+                if (!hasHistory) {
+                    tbody.innerHTML = `<tr><td colspan="4" style="text-align: center; color: var(--text-sec);">لا توجد أي تعديلات مسجلة حتى الآن.</td></tr>`;
+                }
+            });
+        }
+
+        loadEditHistory();
 
         // جلب المشتركين مع إظهار حالة الحظر
         function loadSubscriptions() {
@@ -442,6 +535,144 @@
                     alert("✅ تم استرجاع السائق بنجاح لجميع المنافذ!");
                 } catch (err) {
                     alert("خطأ أثناء الاسترجاع: " + err.message);
+                }
+            }
+        }
+
+        // جلب جدول سجل التعديلات مع دعم النقر لفتح البطاقات المنظمة
+        function loadEditHistory() {
+            db.collection("drivers").onSnapshot(snapshot => {
+                const tbody = document.getElementById('editHistoryTableBody');
+                if (!tbody) return;
+                tbody.innerHTML = '';
+
+                let hasHistory = false;
+
+                snapshot.forEach(doc => {
+                    const currentData = doc.data();
+                    const docId = doc.id;
+                    const historyList = currentData.editHistory || [];
+
+                    historyList.slice().reverse().forEach((hist, originalIndex) => {
+                        hasHistory = true;
+                        const modDate = hist.modifiedAt ? new Date(hist.modifiedAt).toLocaleString('ar-EG') : 'غير محدد';
+                        const histIndex = historyList.length - 1 - originalIndex;
+
+                        const tr = document.createElement('tr');
+                        tr.className = 'user-row';
+                        tr.innerHTML = `
+                            <td><strong style="color: var(--success);">${currentData.name || '---'}</strong></td>
+                            <td><strong style="color: var(--danger);">${hist.name || '---'}</strong></td>
+                            <td><span style="color: var(--warning); font-weight: bold;">${hist.modifiedBy || 'مجهول'}</span></td>
+                            <td><small style="color: var(--text-sec);">${modDate}</small></td>
+                            <td>
+                                <button class="sm-btn" style="background: rgba(0, 102, 255, 0.2); color: var(--primary); white-space: nowrap;" onclick="event.stopPropagation(); revertDriverToHistory('${docId}', ${histIndex})">
+                                    <i class="fa-solid fa-clock-rotate-left"></i> تراجع
+                                </button>
+                            </td>
+                        `;
+                        // فتح النافذة المنظمة عند الضغط على الصف
+                        tr.onclick = () => openDiffModal(currentData, hist, docId, histIndex);
+                        tbody.appendChild(tr);
+                    });
+                });
+
+                if (!hasHistory) {
+                    tbody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--text-sec);">لا توجد أي تعديلات مسجلة حتى الآن.</td></tr>`;
+                }
+            });
+        }
+
+        loadEditHistory();
+
+        // فتح نافذة المقارنة المنظمة بتصميم بطاقات المنفذ
+        function openDiffModal(currentData, histData, docId, histIndex) {
+            const container = document.getElementById('diffDetailsContainer');
+            const modDate = histData.modifiedAt ? new Date(histData.modifiedAt).toLocaleString('ar-EG') : 'غير محدد';
+
+            container.innerHTML = `
+                <div style="background: rgba(0,0,0,0.2); padding: 10px 14px; border-radius: 10px; font-size: 0.85rem; border: 1px solid var(--border);">
+                    <i class="fa-solid fa-user-pen" style="color: var(--warning);"></i> <b>عُدّل بواسطة:</b> <span style="color: var(--warning); font-weight:bold;">${histData.modifiedBy || 'مجهول'}</span>
+                    <span style="float: left; color: var(--text-sec);"><i class="fa-regular fa-clock"></i> ${modDate}</span>
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                    <div style="background: var(--bg); border: 2px solid var(--danger); border-radius: 14px; padding: 14px;">
+                        <div style="font-weight: 800; color: var(--danger); margin-bottom: 10px; border-bottom: 1px dashed var(--border); padding-bottom: 5px;">
+                            <i class="fa-solid fa-arrow-rotate-left"></i> قبل التعديل (القديم)
+                        </div>
+                        <div style="font-size: 0.88rem; line-height: 1.8;">
+                            <div><b>الاسم:</b> <span style="color: #fff;">${histData.name || '---'}</span></div>
+                            <div><b>الهاتف:</b> <span style="color: #fff; font-family: monospace;">${histData.phone || '---'}</span></div>
+                            ${histData.driverId ? `<div><b>ID السائق:</b> <span style="color: #fff;">${histData.driverId}</span></div>` : ''}
+                            ${histData.branch ? `<div><b>الفرع:</b> <span style="color: #fff;">${histData.branch}</span></div>` : ''}
+                            ${histData.companyCode ? `<div><b>رمز الشركة:</b> <span style="color: #fff;">${histData.companyCode}</span></div>` : ''}
+                        </div>
+                    </div>
+
+                    <div style="background: var(--bg); border: 2px solid var(--success); border-radius: 14px; padding: 14px;">
+                        <div style="font-weight: 800; color: var(--success); margin-bottom: 10px; border-bottom: 1px dashed var(--border); padding-bottom: 5px;">
+                            <i class="fa-solid fa-check"></i> بعد التعديل (الحالي)
+                        </div>
+                        <div style="font-size: 0.88rem; line-height: 1.8;">
+                            <div><b>الاسم:</b> <span style="color: #fff;">${currentData.name || '---'}</span></div>
+                            <div><b>الهاتف:</b> <span style="color: #fff; font-family: monospace;">${currentData.phone || '---'}</span></div>
+                            ${currentData.driverId ? `<div><b>ID السائق:</b> <span style="color: #fff;">${currentData.driverId}</span></div>` : ''}
+                            ${currentData.branch ? `<div><b>الفرع:</b> <span style="color: #fff;">${currentData.branch}</span></div>` : ''}
+                            ${currentData.companyCode ? `<div><b>رمز الشركة:</b> <span style="color: #fff;">${currentData.companyCode}</span></div>` : ''}
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            document.getElementById('modalRevertBtn').onclick = () => {
+                document.getElementById('diffModal').style.display = 'none';
+                revertDriverToHistory(docId, histIndex);
+            };
+
+            document.getElementById('diffModal').style.display = 'flex';
+        }
+
+        // دالة التراجع عن التعديل وإعادة السائق لحالته السابقة فوراً
+        async function revertDriverToHistory(docId, historyIndex) {
+            if (confirm("هل أنت متأكد من رغبتك في التراجع عن هذا التعديل وإعادة السائق لبياناته السابقة؟")) {
+                try {
+                    const docRef = db.collection("drivers").doc(docId);
+                    const docSnap = await docRef.get();
+                    if (!docSnap.exists) throw new Error("السائق غير موجود.");
+
+                    const data = docSnap.data();
+                    const historyList = data.editHistory || [];
+                    const targetState = historyList[historyIndex];
+
+                    if (!targetState) throw new Error("النسخة السابقة غير موجودة.");
+
+                    // حفظ النسخة الحالية قبل التراجع لضمان عدم ضياع أي سجل
+                    historyList.push({
+                        name: data.name || '',
+                        phone: data.phone || '',
+                        driverId: data.driverId || '',
+                        branch: data.branch || '',
+                        companyCode: data.companyCode || '',
+                        modifiedBy: 'المطور (استرجاع نسخة سابقة)',
+                        modifiedAt: new Date().toISOString()
+                    });
+
+                    // كتابة وتطبيق البيانات السابقة
+                    await docRef.update({
+                        name: targetState.name || data.name,
+                        phone: targetState.phone || data.phone,
+                        driverId: targetState.driverId || '',
+                        branch: targetState.branch || '',
+                        companyCode: targetState.companyCode || '531',
+                        editHistory: historyList,
+                        lastUpdatedBy: 'المطور (استرجاع)',
+                        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                    });
+
+                    alert("✅ تم استرجاع بيانات السائق لحالته السابقة بنجاح!");
+                } catch (err) {
+                    alert("خطأ أثناء التراجع: " + err.message);
                 }
             }
         }
