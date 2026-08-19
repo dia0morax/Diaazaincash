@@ -144,7 +144,12 @@
         </div>
 
         <div class="card" style="border: 1px solid var(--danger);">
-            <h3><i class="fa-solid fa-trash-arrow-up" style="color: var(--danger);"></i> سلة المحذوفات (السائقين المحذوفين من قبل المنافذ)</h3>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; flex-wrap: wrap; gap: 10px;">
+                <h3 style="margin-bottom: 0;"><i class="fa-solid fa-trash-arrow-up" style="color: var(--danger);"></i> سلة المحذوفات (السائقين المحذوفين من قبل المنافذ)</h3>
+                <button type="button" class="sm-btn" style="background: rgba(238, 93, 80, 0.25); color: var(--danger); font-weight: 800; padding: 8px 14px;" onclick="deleteAllTrashDrivers()">
+                    <i class="fa-solid fa-trash-can"></i> إفراغ السلة (حذف الكل نهائياً)
+                </button>
+            </div>
             <div class="table-responsive">
                 <table>
                     <thead>
@@ -165,7 +170,12 @@
         </div>
 
         <div class="card" style="border: 1px solid var(--warning);">
-            <h3><i class="fa-solid fa-clock-rotate-left" style="color: var(--warning);"></i> سجل التعديلات على السائقين (النسخ السابقة والتراجع)</h3>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; flex-wrap: wrap; gap: 10px;">
+                <h3 style="margin-bottom: 0;"><i class="fa-solid fa-clock-rotate-left" style="color: var(--warning);"></i> سجل التعديلات على السائقين (النسخ السابقة والتراجع)</h3>
+                <button type="button" class="sm-btn" style="background: rgba(255, 153, 0, 0.25); color: var(--warning); font-weight: 800; padding: 8px 14px;" onclick="clearAllEditHistories()">
+                    <i class="fa-solid fa-eraser"></i> مسح كافة سجلات التعديل
+                </button>
+            </div>
             <div class="table-responsive">
                 <table>
                     <thead>
@@ -299,13 +309,17 @@
             document.getElementById('extendExpiryInput').value = formatDateTimeLocal(d);
         }
 
-        // 1. تنزيل نسخة احتياطية مع دعم كامل ودقيق للغة العربية (UTF-8 BOM)
+        // 1. تنزيل نسخة احتياطية مع دعم كامل للغة العربية للسائقين النشطين فقط (استثناء المحذوفين وهمياً)
         async function exportDriversBackup() {
             try {
                 const snapshot = await db.collection("drivers").get();
                 const driversData = [];
                 snapshot.forEach(doc => {
-                    driversData.push({ id: doc.id, ...doc.data() });
+                    const data = doc.data();
+                    // حفظ وتصدير السائقين الموجودين بالموقع وغير المحذوفين فقط
+                    if (data.isDeleted !== true) {
+                        driversData.push({ id: doc.id, ...data });
+                    }
                 });
 
                 if (driversData.length === 0) {
@@ -511,9 +525,14 @@
                         <td><span style="color: var(--warning); font-weight: bold;">${data.deletedBy || 'مجهول'}</span></td>
                         <td><small style="color: var(--text-sec);">${deletedDate}</small></td>
                         <td>
-                            <button class="sm-btn" style="background: rgba(5, 205, 153, 0.2); color: var(--success);" onclick="restoreDriver('${docId}')">
-                                <i class="fa-solid fa-rotate-left"></i> استرجاع
-                            </button>
+                            <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+                                <button class="sm-btn" style="background: rgba(5, 205, 153, 0.2); color: var(--success);" onclick="restoreDriver('${docId}')">
+                                    <i class="fa-solid fa-rotate-left"></i> استرجاع
+                                </button>
+                                <button class="sm-btn" style="background: rgba(238, 93, 80, 0.2); color: var(--danger);" onclick="permanentDeleteDriver('${docId}')">
+                                    <i class="fa-solid fa-trash-can"></i> حذف نهائي
+                                </button>
+                            </div>
                         </td>
                     `;
                     tbody.appendChild(tr);
@@ -535,6 +554,39 @@
                     alert("✅ تم استرجاع السائق بنجاح لجميع المنافذ!");
                 } catch (err) {
                     alert("خطأ أثناء الاسترجاع: " + err.message);
+                }
+            }
+        }
+
+        // دالة الحذف النهائي للسائق ومسحه تماماً من السحابة والمنظومة
+        async function permanentDeleteDriver(docId) {
+            if (confirm("⚠️ تحذير نهائي: هل أنت متأكد من حذف هذا السائق نهائياً للأبد؟ سيتم مسحه تماماً من قاعدة البيانات ومن شاشات المنافذ وسلة المحذوفات.")) {
+                try {
+                    await db.collection("drivers").doc(docId).delete();
+                    alert("✅ تم حذف السائق نهائياً بنجاح!");
+                } catch (err) {
+                    alert("خطأ أثناء الحذف النهائي: " + err.message);
+                }
+            }
+        }
+
+        // دالة إفراغ سلة المحذوفات وحذف كافة السائقين المحذوفين نهائياً
+        async function deleteAllTrashDrivers() {
+            if (confirm("⚠️ تحذير حرج: هل أنت متأكد من رغبتك في إفراغ سلة المحذوفات وحذف كافة السائقين المحذوفين نهائياً؟ لا يمكن التراجع عن هذا الإجراء.")) {
+                try {
+                    const snapshot = await db.collection("drivers").where("isDeleted", "==", true).get();
+                    if (snapshot.empty) {
+                        alert("سلة المحذوفات فارغة بالفعل!");
+                        return;
+                    }
+                    const batch = db.batch();
+                    snapshot.forEach(doc => {
+                        batch.delete(doc.ref);
+                    });
+                    await batch.commit();
+                    alert(`✅ تم إفراغ السلة وحذف (${snapshot.size}) سائق نهائياً بنجاح!`);
+                } catch (err) {
+                    alert("خطأ أثناء إفراغ السلة: " + err.message);
                 }
             }
         }
@@ -566,9 +618,14 @@
                             <td><span style="color: var(--warning); font-weight: bold;">${hist.modifiedBy || 'مجهول'}</span></td>
                             <td><small style="color: var(--text-sec);">${modDate}</small></td>
                             <td>
-                                <button class="sm-btn" style="background: rgba(0, 102, 255, 0.2); color: var(--primary); white-space: nowrap;" onclick="event.stopPropagation(); revertDriverToHistory('${docId}', ${histIndex})">
-                                    <i class="fa-solid fa-clock-rotate-left"></i> تراجع
-                                </button>
+                                <div style="display: flex; gap: 6px; flex-wrap: nowrap;">
+                                    <button class="sm-btn" style="background: rgba(0, 102, 255, 0.2); color: var(--primary); white-space: nowrap;" onclick="event.stopPropagation(); revertDriverToHistory('${docId}', ${histIndex})">
+                                        <i class="fa-solid fa-clock-rotate-left"></i> تراجع
+                                    </button>
+                                    <button class="sm-btn" style="background: rgba(238, 93, 80, 0.2); color: var(--danger); white-space: nowrap;" onclick="event.stopPropagation(); deleteSingleEditHistory('${docId}', ${histIndex})">
+                                        <i class="fa-solid fa-trash-can"></i> حذف السجل
+                                    </button>
+                                </div>
                             </td>
                         `;
                         // فتح النافذة المنظمة عند الضغط على الصف
@@ -673,6 +730,58 @@
                     alert("✅ تم استرجاع بيانات السائق لحالته السابقة بنجاح!");
                 } catch (err) {
                     alert("خطأ أثناء التراجع: " + err.message);
+                }
+            }
+        }
+
+        // دالة حذف سجل تعديل واحد محدد فقط (دون المساس ببيانات السائق الحالية بالموقع)
+        async function deleteSingleEditHistory(docId, historyIndex) {
+            if (confirm("هل تريد حذف هذا السجل التاريخي فقط؟\n(سيبقى السائق الحالي كما هو دون أي تغيير في المنظومة للمنافذ)")) {
+                try {
+                    const docRef = db.collection("drivers").doc(docId);
+                    const docSnap = await docRef.get();
+                    if (!docSnap.exists) throw new Error("السائق غير موجود.");
+
+                    const data = docSnap.data();
+                    let historyList = Array.isArray(data.editHistory) ? [...data.editHistory] : [];
+
+                    if (historyIndex >= 0 && historyIndex < historyList.length) {
+                        historyList.splice(historyIndex, 1);
+                        await docRef.update({
+                            editHistory: historyList
+                        });
+                        alert("✅ تم حذف سجل التعديل بنجاح مع بقاء بيانات السائق الحالية كما هي!");
+                    }
+                } catch (err) {
+                    alert("خطأ أثناء حذف سجل التعديل: " + err.message);
+                }
+            }
+        }
+
+        // دالة مسح كافة سجلات التعديل لجميع السائقين (دون حذف أو تغيير بيانات أي سائق حالي)
+        async function clearAllEditHistories() {
+            if (confirm("هل أنت متأكد من رغبتك في مسح كافة سجلات التعديل التاريخية؟\n(ستبقى بيانات السائقين الحالية في المنظومة لجميع المنافذ دون أي تغيير)")) {
+                try {
+                    const snapshot = await db.collection("drivers").get();
+                    const batch = db.batch();
+                    let updatedCount = 0;
+
+                    snapshot.forEach(doc => {
+                        const data = doc.data();
+                        if (Array.isArray(data.editHistory) && data.editHistory.length > 0) {
+                            batch.update(doc.ref, { editHistory: [] });
+                            updatedCount++;
+                        }
+                    });
+
+                    if (updatedCount > 0) {
+                        await batch.commit();
+                        alert(`✅ تم تصفير ومسح سجلات التعديل لـ (${updatedCount}) سائق بنجاح دون المساس بالسائقين!`);
+                    } else {
+                        alert("سجل التعديلات فارغ بالفعل!");
+                    }
+                } catch (err) {
+                    alert("خطأ أثناء مسح سجلات التعديل: " + err.message);
                 }
             }
         }
